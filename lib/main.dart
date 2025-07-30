@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,65 +14,77 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Firebase Auth Demo',
-      home: const AuthExample(),
+      title: 'Formulario Firebase App',
+      home: const AuthScreen(),
     );
   }
 }
 
-class AuthExample extends StatefulWidget {
-  const AuthExample({super.key});
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
 
   @override
-  AuthExampleState createState() => AuthExampleState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class AuthExampleState extends State<AuthExample> {
-  String status = "Not signed in";
-  String saludo = "";
+class _AuthScreenState extends State<AuthScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nombreController = TextEditingController();
+  final _edadController = TextEditingController();
+  final _correoController = TextEditingController();
+  final _passController = TextEditingController();
 
-  /// Login anónimo
-  void signInAnonymously() async {
-    try {
-      await FirebaseAuth.instance.signInAnonymously();
-      setState(() {
-        status = "Signed in anonymously";
-      });
-    } catch (e) {
-      setState(() {
-        status = "Error: $e";
-      });
-    }
-  }
+  bool isLogin = true;
+  String mensaje = "";
 
-  /// Consumir la API http://localhost:3000/saludo
-  Future<void> getSaludo() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        setState(() {
-          saludo = "Debes estar autenticado para ver el saludo.";
-        });
-        return;
-      }
-
-      final response = await http.get(Uri.parse("http://10.0.2.2:3000/saludo"));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          saludo = data["mensaje"] ?? "Respuesta sin mensaje";
-        });
+  Future<void> _submitForm() async {
+    if (_formKey.currentState!.validate()) {
+      if (isLogin) {
+        // Login
+        try {
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: _correoController.text.trim(),
+            password: _passController.text.trim(),
+          );
+          setState(() {
+            mensaje = "¡Bienvenido ${_nombreController.text}!";
+          });
+        } catch (e) {
+          setState(() {
+            mensaje = "Error al iniciar sesión: $e";
+          });
+        }
       } else {
-        setState(() {
-          saludo = "Error al obtener saludo: ${response.statusCode}";
-        });
+        // Registro
+        try {
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: _correoController.text.trim(),
+            password: _passController.text.trim(),
+          );
+          setState(() {
+            mensaje = "Usuario registrado: ${_correoController.text}";
+          });
+        } catch (e) {
+          setState(() {
+            mensaje = "Error al registrarse: $e";
+          });
+        }
       }
 
-    } catch (e) {
-      setState(() {
-        saludo = "Error: $e";
-      });
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Datos Ingresados'),
+          content: Text(
+              'Nombre: ${_nombreController.text}\nEdad: ${_edadController.text}\nCorreo: ${_correoController.text}\n\n$mensaje'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -83,25 +93,97 @@ class AuthExampleState extends State<AuthExample> {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Firebase Auth")),
-      body: Center(
+      appBar: AppBar(title: const Text('Formulario + Firebase')),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(status),
-            ElevatedButton(
-              onPressed: signInAnonymously,
-              child: const Text("Login anónimo"),
-            ),
-            const SizedBox(height: 20),
-            if (user != null) ...[
-              ElevatedButton(
-                onPressed: getSaludo,
-                child: const Text("Obtener saludo"),
+            if (user == null) Form(
+              key: _formKey,
+              child: Expanded(
+                child: ListView(
+                  children: [
+                    TextFormField(
+                      controller: _nombreController,
+                      decoration: const InputDecoration(labelText: 'Nombre'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Campo obligatorio';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: _edadController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Edad'),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Campo obligatorio';
+                        }
+                        final edad = int.tryParse(value);
+                        if (edad == null || edad <= 0) {
+                          return 'Debe ser un número mayor a 0';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: _correoController,
+                      decoration: const InputDecoration(labelText: 'Correo'),
+                      validator: (value) {
+                        if (value == null ||
+                            !RegExp(r'^[\w-.]+@([\w-]+\.)+[\w]{2,4}')
+                                .hasMatch(value)) {
+                          return 'Correo inválido';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: _passController,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Contraseña'),
+                      validator: (value) {
+                        if (value == null || value.length < 6) {
+                          return 'Mínimo 6 caracteres';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: _submitForm,
+                      child: Text(isLogin ? 'Iniciar Sesión' : 'Registrarse'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          isLogin = !isLogin;
+                        });
+                      },
+                      child: Text(isLogin
+                          ? '¿No tienes cuenta? Regístrate'
+                          : '¿Ya tienes cuenta? Inicia sesión'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              Text(saludo),
-            ],
+            )
+            else
+              Column(
+                children: [
+                  Text("Bienvenido ${user.email}"),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      setState(() {});
+                    },
+                    child: const Text("Cerrar sesión"),
+                  ),
+                ],
+              )
           ],
         ),
       ),
